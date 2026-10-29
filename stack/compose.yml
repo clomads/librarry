@@ -1,0 +1,155 @@
+# voidpad library stack. Runs on host rootless podman via the podman socket.
+# Everything except Jellyfin/Jellyseerr shares gluetun's network, so it can only
+# reach the internet through the Proton tunnel (kill switch is gluetun's firewall).
+# Data: ~/media   Config: ~/.local/share/library-stack/<app>
+name: library
+
+x-common: &common
+  restart: unless-stopped
+  environment: &env
+    TZ: America/Los_Angeles
+    PUID: "0"   # rootless podman: root in the container is clomads on the host
+    PGID: "0"
+
+services:
+  gluetun:
+    image: docker.io/qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    security_opt: [label=disable]   # SELinux otherwise denies opening /dev/net/tun
+    env_file:
+      - .env      # OPENVPN_USER / OPENVPN_PASSWORD (Proton OpenVPN credentials, user ends in +pmp)
+      - vpn.env   # server choice, written by the Librarry VPN tab
+    environment:
+      TZ: America/Los_Angeles
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: openvpn
+      PORT_FORWARD_ONLY: "on"
+      VPN_PORT_FORWARDING: "on"
+      VPN_PORT_FORWARDING_STATUS_FILE: /gluetun/forwarded_port
+      FIREWALL_INPUT_PORTS: 9091,3000,9696,8989,7878,8686,6969
+      HTTP_CONTROL_SERVER_ADDRESS: ":8000"
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: '{"auth":"none"}'   # only published on 127.0.0.1
+      UPDATER_PERIOD: 24h   # refresh Proton's server list daily, no .ovpn files
+    volumes:
+      - ~/.local/share/library-stack/gluetun:/gluetun:Z
+    ports:
+      - 127.0.0.1:9091:9091   # transmission rpc
+      - 127.0.0.1:3000:3000   # flood
+      - 127.0.0.1:9696:9696   # prowlarr
+      - 127.0.0.1:8989:8989   # sonarr
+      - 127.0.0.1:7878:7878   # radarr
+      - 127.0.0.1:8686:8686   # lidarr
+      - 127.0.0.1:6969:6969   # whisparr
+      - 127.0.0.1:8000:8000   # gluetun control (public ip / port forward status)
+
+  transmission:
+    <<: *common
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    volumes:
+      - ~/.local/share/library-stack/transmission:/config:Z
+      - ~/media:/media:z
+      - ~/.local/share/library-stack/gluetun:/gluetun:ro,z
+      - ./port-sync:/custom-services.d:ro,z   # keeps peer-port = Proton forwarded port
+
+  flood:
+    image: docker.io/jesec/flood:latest
+    container_name: flood
+    restart: unless-stopped
+    user: "0:0"
+    network_mode: service:gluetun
+    depends_on: [transmission]
+    command: >
+      --host 0.0.0.0 --port 3000 --auth none
+      --trurl http://127.0.0.1:9091/transmission/rpc --truser flood --trpass flood
+    volumes:
+      - ~/.local/share/library-stack/flood:/config:Z
+      - ~/media:/media:z
+
+  prowlarr:
+    <<: *common
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    volumes:
+      - ~/.local/share/library-stack/prowlarr:/config:Z
+
+  sonarr:
+    <<: *common
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    volumes:
+      - ~/.local/share/library-stack/sonarr:/config:Z
+      - ~/media:/media:z
+      - ~/.local/share/library-stack/ha-meds:/nas   # HA media/meds (CIFS at /mnt/ha-media), the offload library
+
+  radarr:
+    <<: *common
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    volumes:
+      - ~/.local/share/library-stack/radarr:/config:Z
+      - ~/media:/media:z
+      - ~/.local/share/library-stack/ha-meds:/nas   # HA media/meds (CIFS at /mnt/ha-media), the offload library
+
+  lidarr:
+    <<: *common
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    volumes:
+      - ~/.local/share/library-stack/lidarr:/config:Z
+      - ~/media:/media:z
+      - ~/.local/share/library-stack/ha-meds:/nas   # HA media/meds (CIFS at /mnt/ha-media), the offload library
+
+  whisparr:
+    image: ghcr.io/hotio/whisparr:latest
+    container_name: whisparr
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on: [gluetun]
+    environment: *env
+    volumes:
+      - ~/.local/share/library-stack/whisparr:/config:Z
+      - ~/media:/media:z
+
+  # Off the VPN so they stay reachable on the LAN and over Tailscale.
+  jellyfin:
+    image: docker.io/jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    user: "0:0"
+    devices: [/dev/dri:/dev/dri]   # 780M VAAPI transcoding
+    environment:
+      TZ: America/Los_Angeles
+    volumes:
+      - ~/.local/share/library-stack/jellyfin:/config:Z
+      - ~/.local/share/library-stack/jellyfin-cache:/cache:Z
+      - ~/media:/media:z
+      - ~/.local/share/library-stack/ha-meds:/nas:ro   # HA media/meds (CIFS at /mnt/ha-media), the offload library
+    ports:
+      - 8096:8096
+
+  seerr:   # successor to Jellyseerr/Overseerr; same config dir
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      TZ: America/Los_Angeles
+    volumes:
+      - ~/.local/share/library-stack/seerr:/app/config:Z
+    ports:
+      - 127.0.0.1:5055:5055

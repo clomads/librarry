@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bash
+# Keep Transmission's peer port equal to the port Proton forwards to us via gluetun.
+last=""
+while true; do
+  port=$(cat /gluetun/forwarded_port 2>/dev/null | tr -dc 0-9)
+  if [ -n "$port" ] && [ "$port" != "$last" ]; then
+    if transmission-remote 127.0.0.1:9091 -p "$port" >/dev/null 2>&1; then
+      echo "[port-sync] peer port -> $port"
+      last="$port"
+    fi
+  fi
+  sleep 60
+done

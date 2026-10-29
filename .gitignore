@@ -1,0 +1,4 @@
+node_modules/
+stack/.env
+stack/vpn.env
+*.log

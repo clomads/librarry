@@ -1,0 +1,377 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Librarry</title>
+<style>
+  :root { --bg:#111114; --bar:#1b1b20; --tab:#26262d; --line:#2a2a31; --on:#7c5cff; --text:#ececf1; --dim:#9a9aa6; --ok:#3ecf8e; --warn:#f5a524; --bad:#ff5d6c; }
+  * { box-sizing:border-box; -webkit-user-select:none; user-select:none; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:16px/1.3 system-ui, sans-serif; overflow:hidden; }
+  button { font:inherit; color:inherit; touch-action:manipulation; }
+
+  #bar { display:flex; gap:6px; padding:8px; background:var(--bar); }
+  #tabs { display:flex; gap:10px; flex:0 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; padding:7px 9px 0 0; margin-top:-7px; }
+  #ipbox { flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; gap:4px; padding:0 6px 0 10px; font-size:14px; overflow:hidden; }
+  #ipbox div { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #ipbox .lbl { color:var(--dim); display:inline-block; width:44px; text-align:right; margin-right:8px; }
+  #ipbox .sub { color:var(--dim); }
+  #tabs button { flex:0 0 auto; min-width:72px; height:56px; padding:0 13px; border:0; border-radius:12px; background:var(--tab); font-size:16px; }
+  #tabs button.on { background:var(--on); }
+  #tabs button { position:relative; }
+  .tb { position:absolute; top:-7px; right:-9px; box-shadow:0 0 0 2px var(--bar); min-width:20px; height:20px; padding:0 6px; border-radius:10px; font-size:12px; font-weight:600; line-height:20px; text-align:center; background:var(--text); color:var(--bg); display:none; }
+  .tb.on { display:block; }
+  .tb.err { background:var(--bad); color:#fff; }
+  .tb.warn { background:var(--warn); color:#111; }
+  .tb.dot { min-width:12px; width:12px; height:12px; padding:0; top:-4px; right:-4px; }
+  .icon { flex:0 0 56px; width:56px; height:56px; border:0; border-radius:12px; background:transparent; position:relative; display:grid; place-items:center; }
+  .icon:active { background:var(--tab); }
+  .icon svg { width:26px; height:26px; stroke:var(--text); fill:none; stroke-width:2; stroke-linecap:round; }
+  .badge { position:absolute; top:10px; right:10px; width:11px; height:11px; border-radius:50%; background:var(--warn); border:2px solid var(--bar); display:none; }
+  .badge.on { display:block; } .badge.bad { background:var(--bad); }
+
+  #views { position:absolute; top:72px; left:0; right:0; bottom:0; }
+  webview { position:absolute; inset:0; width:100%; height:100%; display:none; }
+  webview.on { display:flex; }
+  .wait { position:absolute; inset:0; display:none; align-items:center; justify-content:center; color:var(--dim); font-size:20px; pointer-events:none; }
+  .wait.on { display:flex; }
+
+  /* right-hand popover sidebar */
+  #scrim { position:fixed; inset:0; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .2s; z-index:10; }
+  #drawer { position:fixed; top:0; right:0; bottom:0; width:min(480px, 92vw); background:var(--bar); z-index:11;
+    transform:translateX(100%); transition:transform .22s ease; display:flex; flex-direction:column; box-shadow:-12px 0 32px rgba(0,0,0,.4); }
+  body.menu #scrim { opacity:1; pointer-events:auto; }
+  body.menu #drawer { transform:none; }
+  #dhead { display:flex; align-items:center; gap:4px; padding:8px; height:72px; border-bottom:1px solid var(--line); }
+  #dtitle { flex:1; font-size:20px; font-weight:600; padding-left:6px; }
+  #dback { visibility:hidden; }
+  body.deep #dback { visibility:visible; }
+  .page { flex:1; overflow:auto; padding:8px 0 24px; display:none; }
+  .page.on { display:block; }
+
+  .item { display:flex; align-items:center; gap:14px; width:100%; min-height:76px; padding:12px 18px; border:0; background:transparent; text-align:left; border-bottom:1px solid var(--line); }
+  .item:active { background:var(--tab); }
+  .item .ic { width:44px; height:44px; border-radius:12px; background:var(--tab); display:grid; place-items:center; flex:0 0 44px; }
+  .item .ic svg { width:24px; height:24px; stroke:var(--text); fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .item .txt { flex:1; min-width:0; }
+  .item .t1 { font-size:18px; }
+  .item .t2 { color:var(--dim); font-size:15px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .chev { color:var(--dim); font-size:24px; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; vertical-align:1px; background:var(--dim); }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); } .dot.bad { background:var(--bad); }
+
+  .sec { padding:14px 18px 6px; color:var(--dim); font-size:14px; text-transform:uppercase; letter-spacing:.04em; }
+  .kv { display:flex; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .kv span:first-child { color:var(--dim); }
+  .kv span:last-child { text-align:right; word-break:break-all; }
+  .pad { padding:12px 18px; }
+  .note { color:var(--dim); font-size:14px; padding:6px 18px 0; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; padding:12px 18px; }
+  .btn { height:48px; padding:0 18px; border:0; border-radius:10px; background:var(--tab); font-size:16px; }
+  .btn.primary { background:var(--on); }
+  .btn:disabled { opacity:.35; }
+  select { width:100%; height:52px; margin-bottom:10px; padding:0 12px; border-radius:10px; border:0; background:var(--tab); color:var(--text); font-size:17px; }
+  .app { display:flex; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); }
+  .app .txt { flex:1; }
+  .app .t2 { color:var(--dim); font-size:14px; margin-top:2px; }
+  .log { color:var(--dim); padding:10px 18px; white-space:pre-wrap; min-height:1em; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div id="tabs"></div>
+  <div id="ipbox" title="Checked live from inside the VPN and from voidpad itself">
+    <div id="ip-vpn"><span class="lbl">VPN</span><span class="dot"></span>…</div>
+    <div id="ip-local"><span class="lbl">Local</span>…</div>
+  </div>
+  <button class="icon" id="reload" title="Reload this tab"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+  <button class="icon" id="burger" title="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="badge" id="badge"></span></button>
+</div>
+<div id="views"></div>
+
+<div id="scrim"></div>
+<aside id="drawer">
+  <div id="dhead">
+    <button class="icon" id="dback" title="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div id="dtitle">Librarry</div>
+    <button class="icon" id="dclose" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+
+  <div class="page on" id="p-root">
+    <button class="item" data-go="vpn">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/></svg></div>
+      <div class="txt"><div class="t1">VPN</div><div class="t2" id="vpn-sum">Checking…</div></div>
+      <div class="chev">›</div>
+    </button>
+    <button class="item" data-go="updates">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></div>
+      <div class="txt"><div class="t1">Updates</div><div class="t2" id="upd-sum">Checking…</div></div>
+      <div class="chev">›</div>
+    </button>
+  </div>
+
+  <div class="page" id="p-vpn">
+    <div class="sec">Connection</div>
+    <div id="vstat"></div>
+    <div class="note">Downloads and the arrs only reach the internet through this tunnel. Jellyfin and Requests don't use it.</div>
+    <div class="sec" style="margin-top:14px">Server</div>
+    <div class="pad">
+      <select id="vcountry"></select>
+      <select id="vcity"></select>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="vapply">Apply</button>
+      <button class="btn" id="vre">Reconnect</button>
+    </div>
+    <div class="note">Only Proton servers that allow port forwarding are listed. Apply restarts the download apps (about a minute). Reconnect picks another server in the same place without restarting them.</div>
+    <div class="log" id="vlog"></div>
+  </div>
+
+  <div class="page" id="p-updates">
+    <div class="btns">
+      <button class="btn primary" id="check">Check for updates</button>
+      <button class="btn" id="all">Update everything</button>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="sec">Apps</div>
+    <div id="rows"></div>
+    <div class="note" id="ver"></div>
+  </div>
+</aside>
+
+<script>
+const TABS = [
+  { id:'flood',      label:'Downloads', url:'http://127.0.0.1:3000/' },
+  { id:'jellyfin',   label:'Jellyfin',  url:'http://127.0.0.1:8096/' },
+  { id:'requests',   label:'Requests',  url:'http://127.0.0.1:5055/' },
+  { id:'radarr',     label:'Movies',    url:'http://127.0.0.1:7878/' },
+  { id:'sonarr',     label:'TV',        url:'http://127.0.0.1:8989/' },
+  { id:'lidarr',     label:'Music',     url:'http://127.0.0.1:8686/' },
+  { id:'whisparr',   label:'Whisparr',  url:'http://127.0.0.1:6969/' },
+  { id:'prowlarr',   label:'Indexers',  url:'http://127.0.0.1:9696/' },
+];
+const $ = id => document.getElementById(id);
+// demo mode (README screenshots): documentation-range addresses instead of the real ones
+const DEMO = new URLSearchParams(location.search).has('demo');
+const demoIp = (ip, which) => DEMO && ip ? (which === 'local' ? '198.51.100.27' : '203.0.113.84') : ip;
+const tabs = $('tabs'), views = $('views');
+const panes = {};
+let current;
+
+for (const t of TABS) {
+  const b = document.createElement('button');
+  b.textContent = t.label; b.dataset.id = t.id;
+  b.appendChild(Object.assign(document.createElement('span'), { className:'tb' }));
+  b.onclick = () => show(t.id);
+  tabs.appendChild(b);
+}
+$('reload').onclick = () => panes[current] && panes[current].reload();
+
+function makeView(t) {
+  const w = document.createElement('webview');
+  w.setAttribute('partition', 'persist:library');
+  w.setAttribute('allowpopups', '');
+  const wait = Object.assign(document.createElement('div'), { className:'wait', textContent:`Starting ${t.label}…` });
+  // Retry until the container answers (first launch can take a minute).
+  w.addEventListener('did-fail-load', e => {
+    if (e.isMainFrame && e.errorCode !== -3) { wait.classList.add('on'); setTimeout(() => w.loadURL(t.url), 3000); }
+  });
+  w.addEventListener('did-finish-load', () => wait.classList.remove('on'));
+  w.src = t.url;
+  views.append(w, wait);
+  w.wait = wait;
+  return w;
+}
+
+function show(id) {
+  if (!panes[id]) panes[id] = makeView(TABS.find(x => x.id === id));
+  for (const [k, el] of Object.entries(panes)) {
+    el.classList.toggle('on', k === id);
+    el.wait.style.visibility = k === id ? '' : 'hidden';
+  }
+  for (const b of tabs.querySelectorAll('button')) b.classList.toggle('on', b.dataset.id === id);
+  current = id;
+  try { localStorage.setItem('tab', id); } catch {}
+}
+
+// ---- sidebar: root list, then a deeper page per item ----
+const TITLES = { root:'Librarry', vpn:'VPN', updates:'Updates' };
+function page(name) {
+  for (const p of document.querySelectorAll('.page')) p.classList.toggle('on', p.id === 'p-' + name);
+  $('dtitle').textContent = TITLES[name];
+  document.body.classList.toggle('deep', name !== 'root');
+  if (name === 'root') summaries();
+  if (name === 'vpn') vpnRefresh(true);
+  if (name === 'updates') refresh();
+}
+function openMenu(name = 'root') { document.body.classList.add('menu'); page(name); }
+function closeMenu() { document.body.classList.remove('menu'); }
+$('burger').onclick = () => openMenu();
+$('scrim').onclick = $('dclose').onclick = closeMenu;
+$('dback').onclick = () => page('root');
+for (const el of document.querySelectorAll('[data-go]')) el.onclick = () => page(el.dataset.go);
+
+// what the root list and the hamburger badge show
+let lastVpn, lastApps;
+function vpnUp(s) { return s && s.vpn === 'running' && s.ip; }
+function paintSummaries() {
+  const vs = $('vpn-sum');
+  if (lastVpn) {
+    vs.innerHTML = vpnUp(lastVpn)
+      ? `<span class="dot ok"></span>${[lastVpn.city, lastVpn.country].filter(Boolean).join(', ')} · ${lastVpn.ip}`
+      : `<span class="dot bad"></span>Disconnected`;
+  }
+  const us = $('upd-sum');
+  if (Array.isArray(lastApps)) {
+    const n = lastApps.filter(a => a.update).length;
+    const down = lastApps.filter(a => a.state !== 'running').length;
+    us.innerHTML = n ? `<span class="dot warn"></span>${n} update${n > 1 ? 's' : ''} available`
+      : down ? `<span class="dot bad"></span>${down} app${down > 1 ? 's' : ''} not running`
+      : `<span class="dot ok"></span>All ${lastApps.length} apps up to date`;
+  }
+  const badge = $('badge');
+  const bad = lastVpn && !vpnUp(lastVpn);
+  const warn = Array.isArray(lastApps) && lastApps.some(a => a.update || a.state !== 'running');
+  badge.classList.toggle('on', !!(bad || warn));
+  badge.classList.toggle('bad', !!bad);
+}
+async function summaries() {
+  try { lastVpn = await window.library.stack('vpn', 'status'); } catch { lastVpn = { vpn:'down' }; }
+  if (lastVpn.ip) lastVpn.ip = demoIp(lastVpn.ip, 'vpn');
+  try { lastApps = await window.library.stack('status'); } catch {}
+  paintSummaries();
+}
+
+// ---- Updates page: one row per container, each updates on its own ----
+window.library.versions().then(v => $('ver').textContent = `Librarry ${v.app} · Electron ${v.electron}`);
+$('check').onclick = () => run(['check'], 'Checking for newer images…');
+$('all').onclick = () => run(['update', 'all'], 'Updating everything…');
+let busy = false;
+function render(list) {
+  if (!Array.isArray(list)) return;
+  lastApps = list; paintSummaries();
+  const rows = $('rows');
+  rows.innerHTML = '';
+  for (const s of list) {
+    const row = document.createElement('div');
+    row.className = 'app';
+    const dot = s.state !== 'running' ? 'bad' : s.update ? 'warn' : 'ok';
+    row.innerHTML = `<div class="txt"><div><span class="dot ${dot}"></span>${s.name}</div>
+      <div class="t2">${s.state}${s.built ? ' · built ' + s.built : ''}</div></div>`;
+    const b = document.createElement('button');
+    b.className = 'btn' + (s.update ? ' primary' : '');
+    b.textContent = s.update ? 'Update' : 'Up to date';
+    b.disabled = busy || !s.update;
+    b.onclick = () => run(['update', s.name], `Updating ${s.name}…`);
+    row.appendChild(b);
+    rows.appendChild(row);
+  }
+}
+async function run(args, msg) {
+  busy = true; $('log').textContent = msg;
+  document.querySelectorAll('#p-updates button').forEach(b => b.disabled = true);
+  try { render(await window.library.stack(...args)); $('log').textContent = 'Done.'; }
+  catch (e) { $('log').textContent = 'Failed: ' + e.message; }
+  busy = false;
+  $('check').disabled = $('all').disabled = false;
+  refresh();
+}
+async function refresh() {
+  if (busy) return;
+  try { render(await window.library.stack('status')); } catch (e) { $('log').textContent = e.message; }
+}
+
+// ---- VPN page: what gluetun is doing, and where it connects ----
+let vpnServers;
+const country = $('vcountry'), city = $('vcity');
+function fillCities(keep) {
+  const list = (vpnServers || {})[country.value] || [];
+  city.innerHTML = '<option value="">Any city</option>' + list.map(c => `<option>${c}</option>`).join('');
+  city.value = keep || '';
+}
+country.onchange = () => fillCities();
+window.library.stack('vpn', 'servers').then(s => {
+  vpnServers = s;
+  country.innerHTML = Object.keys(s).map(c => `<option>${c}</option>`).join('');
+  if (lastVpn && lastVpn.choice) { country.value = lastVpn.choice.country; fillCities(lastVpn.choice.city); }
+});
+$('vapply').onclick = () => vpnRun(['vpn', 'set', country.value, city.value], `Switching to ${city.value || country.value}…`);
+$('vre').onclick = () => vpnRun(['vpn', 'reconnect'], 'Reconnecting…');
+async function vpnRun(args, msg) {
+  $('vapply').disabled = $('vre').disabled = true;
+  $('vlog').textContent = msg;
+  try { await window.library.stack(...args); $('vlog').textContent = 'Waiting for the tunnel…'; await new Promise(r => setTimeout(r, 15000)); await vpnRefresh(); $('vlog').textContent = 'Done.'; }
+  catch (e) { $('vlog').textContent = 'Failed: ' + e.message; }
+  $('vapply').disabled = $('vre').disabled = false;
+}
+async function vpnRefresh(setPickers) {
+  let s;
+  try { s = await window.library.stack('vpn', 'status'); } catch (e) { $('vstat').innerHTML = `<div class="kv"><span>Error</span><span>${e.message}</span></div>`; return; }
+  if (s.ip) s.ip = demoIp(s.ip, 'vpn');
+  lastVpn = s; paintSummaries();
+  const up = vpnUp(s);
+  const rows = [
+    ['Tunnel', `<span class="dot ${up ? 'ok' : 'bad'}"></span>${up ? 'Connected' : 'Disconnected'}`],
+    ['Public IP', s.ip || '—'],
+    ['Location', [s.city, s.region, s.country].filter(Boolean).join(', ') || '—'],
+    ['Server', s.server || '—'],
+    ['Forwarded port', s.forwarded_port || '—'],
+    ['Provider', 'Proton VPN (OpenVPN)'],
+  ];
+  $('vstat').innerHTML = rows.map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join('');
+  if (setPickers && vpnServers && s.choice) { country.value = s.choice.country; fillCities(s.choice.city); }
+}
+
+// ---- the two IP lines in the bar: really fetched from inside the tunnel and from outside it ----
+const isp = s => /Space Exploration/i.test(s || '') ? 'Starlink' : (s || '').replace(/,? (Inc|LLC|Corporation|AG|Ltd)\.?$/i, '');
+function ipLine(el, label, d, dotClass) {
+  el.innerHTML = `<span class="lbl">${label}</span>` + (d && d.ip
+    ? `${dotClass ? `<span class="dot ${dotClass}"></span>` : ''}${d.ip} <span class="sub">· ${[d.city, d.country].filter(Boolean).join(', ')} · ${isp(d.isp)}</span>`
+    : `<span class="dot bad"></span>${label === 'VPN' ? 'No connection' : 'Offline'}`);
+}
+async function ips() {
+  let r;
+  try { r = await window.library.stack('vpn', 'ips'); } catch { r = {}; }
+  const leak = r.vpn && r.local && r.vpn.ip && r.vpn.ip === r.local.ip;
+  if (DEMO) { if (r.vpn) r.vpn.ip = demoIp(r.vpn.ip, 'vpn'); if (r.local) { r.local.ip = demoIp(r.local.ip, 'local'); r.local.city = 'Springfield'; } }
+  ipLine($('ip-vpn'), 'VPN', r.vpn, leak ? 'bad' : 'ok');
+  if (leak) $('ip-vpn').insertAdjacentHTML('beforeend', ' <span style="color:var(--bad)">same as local!</span>');
+  ipLine($('ip-local'), 'Local', r.local);
+}
+ips();
+setInterval(ips, 60000);
+
+// ---- tab badges: white = active items, red = errors (count), amber dot = warnings, red dot = app down ----
+async function tabBadges() {
+  let b;
+  try { b = await window.library.badges(); } catch { return; }
+  for (const btn of tabs.querySelectorAll('button')) {
+    const el = btn.querySelector('.tb'), s = b[btn.dataset.id];
+    el.className = 'tb'; el.textContent = ''; btn.title = '';
+    if (!s) continue;
+    if (s.down) { el.className = 'tb on err dot'; btn.title = 'Not responding'; }
+    else if (s.error) { el.className = 'tb on err'; el.textContent = s.error; btn.title = `${s.error} error${s.error > 1 ? 's' : ''}`; }
+    else if (s.count) { el.className = 'tb on'; el.textContent = s.count; btn.title = `${s.count} active`; }
+    else if (s.warn) { el.className = 'tb on warn dot'; btn.title = 'Warning'; }
+  }
+}
+tabBadges();
+setInterval(tabBadges, 15000);
+
+// keep the badge honest: summaries every minute, one image check per launch
+summaries();
+setInterval(summaries, 60000);
+setTimeout(() => window.library.stack('check').then(render).catch(() => {}), 30000);
+
+let start = 'flood', menu;
+try {
+  const [h, m] = location.hash.slice(1).split(',');  // "#vpn", "#jellyfin" or "#jellyfin,vpn"
+  if (TITLES[h]) menu = h; else if (h) start = h;
+  if (TITLES[m]) menu = m;
+  else start = localStorage.getItem('tab') || start;
+} catch {}
+show(TABS.some(t => t.id === start) ? start : 'flood');
+if (menu) openMenu(menu);
+</script>
+</body>
+</html>
