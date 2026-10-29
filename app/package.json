@@ -5,6 +5,11 @@
   "description": "Tabbed touch shell for the voidpad media stack",
   "main": "main.js",
   "private": true,
-  "scripts": { "start": "electron ." },
-  "devDependencies": { "electron": "^38.0.0" }
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  },
+  "license": "MIT"
 }

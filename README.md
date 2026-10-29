@@ -10,6 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/vibecoded-100%25-ff69b4" alt="vibecoded">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license">
   <img src="https://img.shields.io/badge/status-early%20%2F%20personal%20build-orange" alt="status: early">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20(planned)-lightgrey" alt="platform">
   <img src="https://img.shields.io/badge/Electron-38-47848F?logo=electron&logoColor=white" alt="Electron 38">
@@ -69,3 +70,7 @@ app/      Electron shell (tabs, badges, sidebar)
 stack/    compose file, stackctl.sh (up/down/status/update), vpnctl.py (Gluetun status, server choice, IP checks)
 stack/migrate/   one-off tools used to move an existing Home Assistant *arr setup over
 ```
+
+## License
+
+[MIT](LICENSE)
