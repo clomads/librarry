@@ -108,6 +108,13 @@
       <div class="txt"><div class="t1">Updates</div><div class="t2" id="upd-sum">Checking…</div></div>
       <div class="chev">›</div>
     </button>
+    <div class="sec" style="margin-top:10px">When I close Librarry</div>
+    <div class="btns" id="onclose">
+      <button class="btn" data-v="keep">Keep running</button>
+      <button class="btn" data-v="stop">Stop everything</button>
+      <button class="btn" data-v="">Ask</button>
+    </div>
+    <div class="note" id="onclose-note"></div>
   </div>
 
   <div class="page" id="p-vpn">
@@ -210,6 +217,17 @@ $('burger').onclick = () => openMenu();
 $('scrim').onclick = $('dclose').onclick = closeMenu;
 $('dback').onclick = () => page('root');
 for (const el of document.querySelectorAll('[data-go]')) el.onclick = () => page(el.dataset.go);
+
+// close behaviour: keep the stack running in the background, stop it, or ask each time
+const CLOSE_NOTES = { keep:'Downloads, seeding and the arrs keep going after the window closes.', stop:'Closing stops every app; opening Librarry starts them again.', '':'You\'ll be asked each time.' };
+async function paintOnClose(v) {
+  if (v === undefined) v = (await window.library.prefs()).onClose || '';
+  for (const b of document.querySelectorAll('#onclose button')) b.classList.toggle('primary', b.dataset.v === v);
+  $('onclose-note').textContent = CLOSE_NOTES[v];
+}
+for (const b of document.querySelectorAll('#onclose button'))
+  b.onclick = async () => { await window.library.prefs({ onClose: b.dataset.v || null }); paintOnClose(b.dataset.v); };
+paintOnClose();
 
 // what the root list and the hamburger badge show
 let lastVpn, lastApps;

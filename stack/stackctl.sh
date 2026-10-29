@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Host-side control for the library stack (used by the library app).
-#   stackctl.sh up | down | status | check | update <service|all> | recreate-vpn | vpn <vpnctl args>
+#   stackctl.sh up | down | stop | status | check | update <service|all> | recreate-vpn | vpn <vpnctl args>
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICES=(gluetun transmission flood prowlarr sonarr radarr lidarr whisparr jellyfin seerr)
@@ -49,6 +49,7 @@ case "${1:-status}" in
   recreate-vpn) recreate_vpn ;;
   vpn) shift; exec "$DIR/vpnctl.py" "$@" ;;
   down) compose down ;;
+  stop) compose stop ;;   # pause everything, keep containers for a quick start
   status) status ;;
   check)  # pull newer images without touching running containers
     for s in "${SERVICES[@]}"; do img=$(image_of "$s") && podman pull -q "$img" >/dev/null || true; done

@@ -1,5 +1,5 @@
 // Librarry: one touch window, one tab per media app.
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
 
@@ -91,6 +91,7 @@ app.whenReady().then(() => {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), webviewTag: true },
   });
   win.maximize();
+  win.on('close', e => onClose(win, e));
   app.on('second-instance', () => { if (win.isMinimized()) win.restore(); win.show(); win.focus(); });
   // LIBRARY_DEMO=1 swaps real IP addresses for documentation ones (for README screenshots)
   win.loadFile('index.html', { hash: process.env.LIBRARY_TAB || '', query: process.env.LIBRARY_DEMO ? { demo: '1' } : {} });
@@ -104,3 +105,33 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+// ---- on close: keep the stack downloading in the background, or stop it ----
+const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
+const readPrefs = () => { try { return JSON.parse(fs.readFileSync(prefsFile(), 'utf8')); } catch { return {}; } };
+const writePrefs = p => fs.writeFileSync(prefsFile(), JSON.stringify(p, null, 2));
+ipcMain.handle('prefs', (_e, patch) => { const p = { ...readPrefs(), ...(patch || {}) }; if (patch) writePrefs(p); return p; });
+let closing = false;
+function onClose(win, e) {
+  if (closing || process.env.LIBRARY_SNAPSHOT) return;
+  e.preventDefault();
+  const finish = stop => {
+    closing = true;
+    if (!stop) return win.close();
+    win.webContents.executeJavaScript("document.body.insertAdjacentHTML('beforeend', '<div style=\"position:fixed;inset:0;z-index:99;display:grid;place-items:center;background:rgba(0,0,0,.6);font-size:22px\">Stopping downloads and apps…</div>')").catch(() => {});
+    stackctl('stop').catch(() => {}).finally(() => win.close());
+  };
+  const pref = readPrefs().onClose;
+  if (pref === 'keep' || pref === 'stop') return finish(pref === 'stop');
+  dialog.showMessageBox(win, {
+    type: 'question', title: 'Close Librarry',
+    message: 'Keep downloading after you close Librarry?',
+    detail: 'Downloads, seeding and the arrs keep running in the background unless you stop them. You can change this later from the menu.',
+    buttons: ['Keep running', 'Stop everything', 'Cancel'], defaultId: 0, cancelId: 2,
+    checkboxLabel: 'Remember my choice', checkboxChecked: true,
+  }).then(({ response, checkboxChecked }) => {
+    if (response === 2) return;
+    if (checkboxChecked) writePrefs({ ...readPrefs(), onClose: response === 1 ? 'stop' : 'keep' });
+    finish(response === 1);
+  });
+}
