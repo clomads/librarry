@@ -140,6 +140,7 @@ services:
       - ~/.local/share/library-stack/ha-meds:/nas:ro   # HA media/meds (CIFS at /mnt/ha-media), the offload library
     ports:
       - 8096:8096
+      - 7359:7359/udp   # client auto-discovery
 
   seerr:   # successor to Jellyseerr/Overseerr; same config dir
     image: ghcr.io/seerr-team/seerr:latest
