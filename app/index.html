@@ -81,7 +81,7 @@
 <div id="bar">
   <div id="tabs"></div>
   <div id="ipbox" title="Checked live from inside the VPN and from voidpad itself">
-    <div id="ip-vpn"><span class="lbl">VPN</span><span class="dot"></span>…</div>
+    <div id="ip-vpn"><span class="lbl">VPN</span><span class="dot warn"></span>Connecting…</div>
     <div id="ip-local"><span class="lbl">Local</span>…</div>
   </div>
   <button class="icon" id="reload" title="Reload this tab"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
@@ -254,8 +254,6 @@ function paintSummaries() {
   badge.classList.toggle('bad', !!bad);
 }
 async function summaries() {
-  try { lastVpn = await window.library.stack('vpn', 'status'); } catch { lastVpn = { vpn:'down' }; }
-  if (lastVpn.ip) lastVpn.ip = demoIp(lastVpn.ip, 'vpn');
   try { lastApps = await window.library.stack('status'); } catch {}
   paintSummaries();
 }
@@ -318,7 +316,7 @@ $('vre').onclick = () => vpnRun(['vpn', 'reconnect'], 'Reconnecting…');
 async function vpnRun(args, msg) {
   $('vapply').disabled = $('vre').disabled = true;
   $('vlog').textContent = msg;
-  try { await window.library.stack(...args); $('vlog').textContent = 'Waiting for the tunnel…'; await new Promise(r => setTimeout(r, 15000)); await vpnRefresh(); $('vlog').textContent = 'Done.'; }
+  try { await window.library.stack(...args); $('vlog').textContent = 'Waiting for the tunnel…'; await new Promise(r => setTimeout(r, 15000)); await vpnRefresh(); ips(); $('vlog').textContent = 'Done.'; }
   catch (e) { $('vlog').textContent = 'Failed: ' + e.message; }
   $('vapply').disabled = $('vre').disabled = false;
 }
@@ -344,20 +342,32 @@ async function vpnRefresh(setPickers) {
 const isp = s => /Space Exploration/i.test(s || '') ? 'Starlink' : (s || '').replace(/,? (Inc|LLC|Corporation|AG|Ltd)\.?$/i, '');
 function ipLine(el, label, d, dotClass) {
   el.innerHTML = `<span class="lbl">${label}</span>` + (d && d.ip
-    ? `${dotClass ? `<span class="dot ${dotClass}"></span>` : ''}${d.ip} <span class="sub">· ${[d.city, d.country].filter(Boolean).join(', ')} · ${isp(d.isp)}</span>`
-    : `<span class="dot bad"></span>${label === 'VPN' ? 'No connection' : 'Offline'}`);
+    ? `${dotClass ? `<span class="dot ${dotClass}"></span>` : ''}${d.ip} <span class="sub">· ${[d.city, d.country].filter(Boolean).join(', ')}${d.isp ? ' · ' + isp(d.isp) : ''}</span>`
+    : `<span class="dot ${dotClass || 'bad'}"></span>${label === 'VPN' ? (dotClass === 'warn' ? 'Connecting…' : 'No connection') : 'Offline'}`);
 }
+// Header and menu share this one check. "No connection" needs gluetun itself to say the tunnel
+// is down for a while: a failed IP lookup alone (shared VPN IPs get rate-limited) never shows it.
+const IP_FAST = 5000, IP_SLOW = 60000, GRACE = 90000;
+let vpnDownSince = null, ipTimer;
 async function ips() {
+  clearTimeout(ipTimer);
   let r;
   try { r = await window.library.stack('vpn', 'ips'); } catch { r = {}; }
-  const leak = r.vpn && r.local && r.vpn.ip && r.vpn.ip === r.local.ip;
-  if (DEMO) { if (r.vpn) r.vpn.ip = demoIp(r.vpn.ip, 'vpn'); if (r.local) { r.local.ip = demoIp(r.local.ip, 'local'); r.local.city = 'Springfield'; } }
-  ipLine($('ip-vpn'), 'VPN', r.vpn, leak ? 'bad' : 'ok');
+  const st = r.status || { vpn:'down' };
+  const up = vpnUp(st);
+  if (up) vpnDownSince = null; else vpnDownSince = vpnDownSince || Date.now();
+  // the live lookup from inside the tunnel, or gluetun's own (also from inside) if every lookup failed
+  const vpn = r.vpn && r.vpn.ip ? r.vpn : up ? { ip: st.ip, city: st.city, country: st.country, isp: 'Proton' } : null;
+  const leak = vpn && r.local && vpn.ip === r.local.ip;
+  const waiting = !up && Date.now() - vpnDownSince < GRACE;
+  if (DEMO) { if (vpn) vpn.ip = demoIp(vpn.ip, 'vpn'); if (st.ip) st.ip = demoIp(st.ip, 'vpn'); if (r.local && r.local.ip) { r.local.ip = demoIp(r.local.ip, 'local'); r.local.city = 'Springfield'; } }
+  ipLine($('ip-vpn'), 'VPN', up ? vpn : null, leak ? 'bad' : up ? 'ok' : waiting ? 'warn' : 'bad');
   if (leak) $('ip-vpn').insertAdjacentHTML('beforeend', ' <span style="color:var(--bad)">same as local!</span>');
   ipLine($('ip-local'), 'Local', r.local);
+  lastVpn = st; paintSummaries();
+  ipTimer = setTimeout(ips, up ? IP_SLOW : IP_FAST);
 }
 ips();
-setInterval(ips, 60000);
 
 // ---- tab badges: white = active items, red = errors (count), amber dot = warnings, red dot = app down ----
 async function tabBadges() {

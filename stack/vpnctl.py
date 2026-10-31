@@ -68,21 +68,33 @@ def set_server(country, city=""):
     return {"ok": True, "country": country, "city": city}
 
 
+LOOKUPS = [  # tried in order; VPN exit IPs are shared, so any one of these can be rate-limited
+    ("https://ipinfo.io/json", lambda d: (d.get("city"), d.get("country"), re.sub(r"^AS\d+\s+", "", d.get("org", "")))),
+    ("https://ipwho.is/", lambda d: (d.get("city"), d.get("country_code"), d.get("connection", {}).get("isp", ""))),
+    ("https://ipapi.co/json/", lambda d: (d.get("city"), d.get("country"), d.get("org", ""))),
+    ("https://ifconfig.co/json", lambda d: (d.get("city"), d.get("country_iso"), d.get("asn_org", ""))),
+]
+
+
 def whoami(cmd):
-    """ipinfo as seen by cmd; returns ip / place / isp, or the failure."""
-    try:
-        out = subprocess.run(cmd + ["curl", "-s", "-m", "8", "https://ipinfo.io/json"],
-                             capture_output=True, text=True, timeout=15).stdout
-        d = json.loads(out)
-        return {"ip": d.get("ip"), "city": d.get("city"), "country": d.get("country"),
-                "isp": re.sub(r"^AS\d+\s+", "", d.get("org", ""))}
-    except Exception as e:
-        return {"error": str(e) or "unreachable"}
+    """Public IP as seen by cmd: ip / place / isp from the first lookup that answers, or an error."""
+    for url, parse in LOOKUPS:
+        try:
+            out = subprocess.run(cmd + ["curl", "-sf", "-m", "6", "-A", "curl/8", url],
+                                 capture_output=True, text=True, timeout=10).stdout
+            d = json.loads(out)
+            if d.get("ip"):
+                city, country, isp = parse(d)
+                return {"ip": d["ip"], "city": city, "country": country, "isp": isp}
+        except Exception:
+            pass
+    return {"error": "lookups failed"}
 
 
 def ips():
-    # checked for real: once from inside gluetun's network (via transmission), once from voidpad itself
-    return {"vpn": whoami(["podman", "exec", "transmission"]), "local": whoami([])}
+    # checked for real: once from inside gluetun's network (via transmission), once from voidpad itself.
+    # status is gluetun's own view, so the header and the menu always show the same connection.
+    return {"vpn": whoami(["podman", "exec", "transmission"]), "local": whoami([]), "status": status()}
 
 
 def reconnect():
